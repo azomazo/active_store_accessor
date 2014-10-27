@@ -10,8 +10,8 @@ module ActiveStoreAccessor
     if !column
       logger.warn("Column '#{column_name}' for active store accessor does not exist in model #{name}.")
       return
-    elsif column.text?
-      serialize(column_name) unless serialized_attributes.include?(column_name.to_s)
+    elsif [:string, :hstore, :json, :jsonb].include?(column.type)
+      # serialize(column_name) unless serialized_attributes.include?(column_name.to_s)
     end
 
     store_accessor column_name, *attrs.keys
@@ -24,18 +24,20 @@ module ActiveStoreAccessor
       # but for most rubist and rails developer it should contains a date too
       type = :datetime if type == :time
 
-      args = [attr_name.to_s, options[:default], type]
+      cast_type = self.connection.lookup_cast_type(self.connection.native_database_types[type.to_sym][:name])
+
+      args = [attr_name.to_s, options[:default], cast_type]
       active_store_attributes[attr_name] = ActiveRecord::ConnectionAdapters::Column.new(*args)
 
       _active_store_accessor_module.module_eval <<-RUBY
         def #{ attr_name }
           column = self.class.active_store_attributes[:#{ attr_name }]
-          value = column.type_cast(super)
+          value = column.type_cast_from_database(super)
           value.nil? ? column.default : value
         end
 
         def #{ attr_name }=(value)
-          super self.class.active_store_attributes[:#{ attr_name }].type_cast_for_write(value)
+          super self.class.active_store_attributes[:#{ attr_name }].type_cast_for_database(value)
         end
       RUBY
     end
